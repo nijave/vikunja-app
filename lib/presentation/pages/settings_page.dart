@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -131,6 +133,33 @@ class SettingsPageState extends ConsumerState<SettingsPage> {
                 },
               ),
               Divider(),
+              if (Platform.isAndroid) ...[
+                ListTile(
+                  title: Text(l10n.clientCertificate),
+                  subtitle: Text(
+                    settings.clientCertAlias ?? l10n.clientCertificateNone,
+                  ),
+                  trailing: settings.clientCertAlias == null
+                      ? TextButton(
+                          onPressed: () {
+                            ref
+                                .read(settingsControllerProvider.notifier)
+                                .chooseClientCertificate();
+                          },
+                          child: Text(l10n.clientCertificateChoose),
+                        )
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          tooltip: l10n.clientCertificateClear,
+                          onPressed: () async {
+                            await ref
+                                .read(settingsControllerProvider.notifier)
+                                .setClientCertificateAlias(null);
+                          },
+                        ),
+                ),
+                Divider(),
+              ],
               CheckboxListTile(
                 title: Text(l10n.enableSentry),
                 subtitle: Text(l10n.sentryHelp),
