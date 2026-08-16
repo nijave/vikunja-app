@@ -219,6 +219,45 @@ class Client {
     }
   }
 
+  /// Performs a byte-oriented GET through the same configured transport as
+  /// API calls. This is used for authenticated resources such as avatars and
+  /// attachments, which may sit behind the same mTLS edge as the JSON API.
+  Future<http.Response> getRaw({required String url}) async {
+    try {
+      return http.Response.fromStream(await getRawStream(url: url));
+    } catch (e, s) {
+      if (e is! FormatException && e is! http.ClientException) {
+        Sentry.captureException(e, stackTrace: s);
+      }
+      Error.throwWithStackTrace(e, s);
+    }
+  }
+
+  Future<http.StreamedResponse> getRawStream({required String url}) async {
+    Future<http.StreamedResponse> executeRequest() async {
+      final request = http.Request('GET', '$apiBase$url'.toUri()!)
+        ..headers.addAll(await getHeaders());
+      return _httpClient.send(request).timeout(_requestTimeout);
+    }
+
+    try {
+      var response = await executeRequest();
+      if (response.statusCode != 401) return response;
+
+      final buffered = await http.Response.fromStream(response);
+      if (await _refreshForResponse(buffered)) {
+        response = await executeRequest();
+        return response;
+      }
+      return _toStreamedResponse(buffered);
+    } catch (e, s) {
+      if (e is! FormatException && e is! http.ClientException) {
+        Sentry.captureException(e, stackTrace: s);
+      }
+      Error.throwWithStackTrace(e, s);
+    }
+  }
+
   Future<Response<T>> delete<T>({
     required String url,
     T Function(dynamic body)? mapper,
@@ -429,6 +468,19 @@ class Client {
       // Proxy and transport-layer errors are often plain text.
     }
     return {'message': body};
+  }
+
+  http.StreamedResponse _toStreamedResponse(http.Response response) {
+    return http.StreamedResponse(
+      Stream.value(response.bodyBytes),
+      response.statusCode,
+      contentLength: response.bodyBytes.length,
+      headers: response.headers,
+      reasonPhrase: response.reasonPhrase,
+      request: response.request,
+      isRedirect: response.isRedirect,
+      persistentConnection: response.persistentConnection,
+    );
   }
 
   ExceptionResponse<T> _handleException<T>(Object e, StackTrace s) {

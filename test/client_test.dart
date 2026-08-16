@@ -9,6 +9,8 @@ import 'package:http/testing.dart' as http_testing;
 import 'package:vikunja_app/core/network/client.dart';
 import 'package:vikunja_app/core/network/token_lock.dart';
 import 'package:vikunja_app/data/data_sources/settings_data_source.dart';
+import 'package:vikunja_app/data/data_sources/server_data_source.dart';
+import 'package:vikunja_app/main.dart' show globalNavigatorKey;
 
 const _baseUrl = 'https://vikunja.example.com';
 
@@ -431,6 +433,61 @@ void main() {
       expect(parsed['grant_type'], 'refresh_token');
       expect(parsed['refresh_token'], 'my-refresh-token');
     });
+  });
+
+  group('Client.getRaw', () {
+    test(
+      'uses the configured client with authentication for binary data',
+      () async {
+        final settings = MockSettingsDatasource()..token = 'binary-token';
+        final expectedBytes = <int>[0, 1, 2, 255];
+        final client = _createClient(
+          settings,
+          http_testing.MockClient((request) async {
+            expect(request.method, 'GET');
+            expect(request.url.path, '/api/v1/tasks/1/attachments/2');
+            expect(request.headers['Authorization'], 'Bearer binary-token');
+            return http.Response.bytes(expectedBytes, 200);
+          }),
+        );
+
+        final response = await client.getRaw(url: '/tasks/1/attachments/2');
+
+        expect(response.bodyBytes, expectedBytes);
+      },
+    );
+  });
+
+  testWidgets('server info 401 does not push another login route', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: globalNavigatorKey,
+        home: const SizedBox(),
+        routes: {'/login': (_) => const SizedBox(key: ValueKey('login-route'))},
+      ),
+    );
+    final client = _createClient(
+      MockSettingsDatasource(),
+      http_testing.MockClient((_) async => http.Response('Unauthorized', 401)),
+    );
+
+    final response = await ServerDataSource(client).getInfo();
+    await tester.pumpAndSettle();
+
+    expect(response.toError().statusCode, 401);
+    expect(response.toError().error, {'message': 'Unauthorized'});
+    expect(find.byKey(const ValueKey('login-route')), findsNothing);
+  });
+
+  test('Client.close closes its configured transport', () {
+    final transport = CloseTrackingClient();
+    final client = _createClient(MockSettingsDatasource(), transport);
+
+    client.close();
+
+    expect(transport.closed, isTrue);
   });
 
   group('Client.postUnauthenticated', () {

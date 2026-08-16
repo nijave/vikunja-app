@@ -20,6 +20,7 @@ import 'package:vikunja_app/presentation/manager/settings_controller.dart';
 import 'package:vikunja_app/presentation/pages/error_widget.dart';
 import 'package:vikunja_app/presentation/pages/loading_widget.dart';
 import 'package:vikunja_app/presentation/pages/login/login_page.dart';
+import 'package:vikunja_app/presentation/widgets/authenticated_avatar.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -307,24 +308,9 @@ class SettingsPageState extends ConsumerState<SettingsPage> {
               color: Theme.of(context).colorScheme.onSecondaryContainer,
             ),
           ),
-          currentAccountPicture: FutureBuilder(
-            future: ref.read(clientProviderProvider).getHeaders(),
-            builder: (context, asyncSnapshot) {
-              if (asyncSnapshot.hasData && asyncSnapshot.data != null) {
-                return CircleAvatar(
-                  backgroundImage: user.username != ""
-                      ? NetworkImage(
-                          user.avatarUrl(
-                            ref.read(clientProviderProvider).apiBase,
-                          ),
-                          headers: asyncSnapshot.data,
-                        )
-                      : null,
-                );
-              } else {
-                return CircleAvatar();
-              }
-            },
+          currentAccountPicture: AuthenticatedAvatar(
+            client: ref.read(clientProviderProvider),
+            username: user.username,
           ),
           decoration: BoxDecoration(
             image: DecorationImage(
