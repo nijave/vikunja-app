@@ -193,6 +193,7 @@ class Client {
     required String url,
     T Function(dynamic body)? mapper,
     Map<String, List<String>>? queryParameters,
+    bool redirectOnUnauthorized = true,
   }) async {
     try {
       Uri uri = Uri.tryParse('$apiBase$url')!;
@@ -208,9 +209,11 @@ class Client {
         fragment: uri.fragment,
       );
 
-      return _handleResponseWithRefresh(mapper, () async {
-        return _httpClient.get(uri, headers: await getHeaders());
-      });
+      return await _handleResponseWithRefresh(
+        mapper,
+        () async => _httpClient.get(uri, headers: await getHeaders()),
+        redirectOnUnauthorized: redirectOnUnauthorized,
+      );
     } catch (e, s) {
       return _handleException(e, s);
     }
@@ -270,6 +273,23 @@ class Client {
     }
   }
 
+  /// Issues a GET over the configured transport WITHOUT following redirects,
+  /// returning the raw response so the caller can read a 3xx `Location`.
+  ///
+  /// The OAuth authorize leg answers with a 302 to a custom-scheme callback
+  /// (`vikunja-flutter://callback?code=...`); following it is neither possible
+  /// nor wanted. On Android this travels on the OkHttp client carrying the
+  /// selected client certificate — the authorize leg is mTLS-gated, which is
+  /// exactly why it cannot be delegated to an external browser. [url] is an
+  /// absolute URL (the authorize endpoint is not under `/api/v1`).
+  Future<http.Response> getWithoutRedirect(Uri url) async {
+    final request = http.Request('GET', url)
+      ..followRedirects = false
+      ..headers['User-Agent'] = userAgent;
+    final streamed = await _httpClient.send(request).timeout(_requestTimeout);
+    return http.Response.fromStream(streamed);
+  }
+
   Future<http.Response> postUnauthenticated({
     required String url,
     dynamic body,
@@ -289,20 +309,18 @@ class Client {
   Future<Response<T>> _handleResponse<T>(
     http.Response response,
     T Function(dynamic body)? mapper,
+    bool redirectOnUnauthorized,
   ) async {
     if (response.statusCode < 200 || response.statusCode >= 400) {
-      try {
-        Map<String, dynamic> error = _decoder.convert(response.body);
+      final error = _decodeErrorBody(response.body);
 
-        if (response.statusCode == 401 &&
-            globalNavigatorKey.currentContext != null) {
-          globalNavigatorKey.currentState?.pushNamed("/login");
-        }
-
-        return ErrorResponse<T>(response.statusCode, await getHeaders(), error);
-      } on FormatException catch (e, s) {
-        return ExceptionResponse(e, s);
+      if (response.statusCode == 401 &&
+          redirectOnUnauthorized &&
+          globalNavigatorKey.currentContext != null) {
+        globalNavigatorKey.currentState?.pushNamed('/login');
       }
+
+      return ErrorResponse<T>(response.statusCode, await getHeaders(), error);
     }
 
     var decode = utf8.decode(response.bodyBytes);
@@ -377,22 +395,40 @@ class Client {
 
   Future<Response<T>> _handleResponseWithRefresh<T>(
     T Function(dynamic body)? mapper,
+    Future<http.Response> Function() executeRequest, {
+    bool redirectOnUnauthorized = true,
+  }) async {
+    final response = await _executeRequestWithRefresh(executeRequest);
+    return _handleResponse(response, mapper, redirectOnUnauthorized);
+  }
+
+  Future<http.Response> _executeRequestWithRefresh(
     Future<http.Response> Function() executeRequest,
   ) async {
     var response = await executeRequest().timeout(_requestTimeout);
 
-    if (response.statusCode == 401) {
-      Map<String, dynamic> error = _decoder.convert(response.body);
-      if (error.containsKey('code') && error['code'] == 11) {
-        bool refreshed = await tryRefreshToken();
-        if (refreshed) {
-          var retryResponse = await executeRequest().timeout(_requestTimeout);
-          return _handleResponse(retryResponse, mapper);
-        }
-      }
+    if (await _refreshForResponse(response)) {
+      return executeRequest().timeout(_requestTimeout);
     }
 
-    return _handleResponse(response, mapper);
+    return response;
+  }
+
+  Future<bool> _refreshForResponse(http.Response response) async {
+    if (response.statusCode != 401) return false;
+
+    final error = _decodeErrorBody(response.body);
+    return error['code'] == 11 && await tryRefreshToken();
+  }
+
+  Map<String, dynamic> _decodeErrorBody(String body) {
+    try {
+      final decoded = _decoder.convert(body);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } on FormatException {
+      // Proxy and transport-layer errors are often plain text.
+    }
+    return {'message': body};
   }
 
   ExceptionResponse<T> _handleException<T>(Object e, StackTrace s) {
