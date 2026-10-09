@@ -104,6 +104,17 @@ load. Import it again." Status `none` after a known import (secure storage
 can lose entries on backup restore or keystore reset) renders as the ordinary
 not-configured state. Neither state crashes or blocks login.
 
+### OAuth login and the system browser
+
+The PKCE flow opens `/oauth/authorize` in the system browser through
+`url_launcher`. The browser cannot use the certificate that the user imported
+into the app. If the proxy also gates that path, the user must install the same
+`.p12` in the Android credential store so that Chrome can present it. The
+`/api/v1/info` probe and the token exchange still go through `Client` and use
+the imported certificate. A candidate follow-up ports the in-app redirect
+handling from PR #301, so the authorization step also runs over the app's
+mTLS transport.
+
 ## Out of scope
 
 - iOS wiring and testing.
