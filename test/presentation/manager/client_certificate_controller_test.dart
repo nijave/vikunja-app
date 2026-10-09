@@ -1,4 +1,3 @@
-// test/presentation/manager/client_certificate_controller_test.dart
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -15,9 +14,13 @@ import 'package:vikunja_app/presentation/manager/client_certificate_controller.d
 class _FakeSettingsRepository implements SettingsRepository {
   ClientCertificate? stored;
   bool ignore = false;
+  bool corrupt = false;
 
   @override
-  Future<ClientCertificate?> getClientCertificate() async => stored;
+  Future<ClientCertificate?> getClientCertificate() async {
+    if (corrupt) throw const FormatException('bad base64');
+    return stored;
+  }
 
   @override
   Future<void> saveClientCertificate(ClientCertificate certificate) async {
@@ -83,6 +86,20 @@ void main() {
 
     expect(status, ClientCertificateStatus.active);
     expect(TlsHttpOverrides.clientCertificateActive, isTrue);
+  });
+
+  test('build reports invalid for corrupt stored data', () async {
+    repo.corrupt = true;
+    final c = container();
+
+    final status = await c.read(clientCertificateControllerProvider.future);
+
+    expect(status, ClientCertificateStatus.invalid);
+    expect(TlsHttpOverrides.clientCertificateActive, isFalse);
+    expect(
+      TlsHttpOverrides.current!.certificateStatus,
+      ClientCertificateStatus.invalid,
+    );
   });
 
   test('importCertificate saves, applies and rebuilds the client', () async {

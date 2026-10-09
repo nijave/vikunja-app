@@ -28,13 +28,14 @@ class ClientCertificateSection extends ConsumerWidget {
       ClientCertificateStatus.invalid => l10n.clientCertificateInvalid,
     };
 
-    final buttons = Row(
+    final buttons = Wrap(
+      spacing: 8,
+      runSpacing: 8,
       children: [
         FilledButton.tonal(
           onPressed: () => _import(context, ref),
           child: Text(l10n.clientCertificateImport),
         ),
-        const SizedBox(width: 8),
         OutlinedButton(
           onPressed: status == ClientCertificateStatus.none
               ? null
@@ -81,7 +82,7 @@ class ClientCertificateSection extends ConsumerWidget {
       context: context,
       builder: (_) => const _PasswordDialog(),
     );
-    if (input == null) return;
+    if (input == null || !context.mounted) return;
 
     try {
       await ref

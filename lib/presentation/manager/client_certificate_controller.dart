@@ -1,4 +1,6 @@
-// lib/presentation/manager/client_certificate_controller.dart
+import 'dart:developer' as developer;
+import 'dart:io';
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:vikunja_app/core/di/network_provider.dart';
 import 'package:vikunja_app/core/di/repository_provider.dart';
@@ -20,9 +22,23 @@ class ClientCertificateController extends _$ClientCertificateController {
 
   Future<ClientCertificateStatus> _apply() async {
     final repo = ref.read(settingsRepositoryProvider);
+    final ignore = await repo.getIgnoreCertificates();
+    final ClientCertificate? certificate;
+    try {
+      certificate = await repo.getClientCertificate();
+    } on FormatException catch (e) {
+      // Corrupt storage: run without a certificate, but report invalid so
+      // the section shows "failed to load" and keeps Remove enabled.
+      developer.log('Stored client certificate is corrupt: ${e.message}');
+      HttpOverrides.global = TlsHttpOverrides(
+        ignoreCertificates: ignore,
+        certificateStatus: ClientCertificateStatus.invalid,
+      );
+      return ClientCertificateStatus.invalid;
+    }
     return applyTlsSettings(
-      ignoreCertificates: await repo.getIgnoreCertificates(),
-      certificate: await repo.getClientCertificate(),
+      ignoreCertificates: ignore,
+      certificate: certificate,
     );
   }
 
