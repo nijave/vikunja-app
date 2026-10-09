@@ -7,6 +7,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:vikunja_app/core/di/network_provider.dart';
 import 'package:vikunja_app/core/di/repository_provider.dart';
 import 'package:vikunja_app/core/network/response.dart';
+import 'package:vikunja_app/core/network/tls_http_overrides.dart';
 import 'package:vikunja_app/core/oauth/oauth_service.dart';
 import 'package:vikunja_app/core/utils/constants.dart'
     show minimumServerVersion;
@@ -16,6 +17,7 @@ import 'package:vikunja_app/domain/entities/auth_model.dart';
 import 'package:vikunja_app/domain/entities/server.dart';
 import 'package:vikunja_app/domain/entities/version.dart';
 import 'package:vikunja_app/l10n/gen/app_localizations.dart';
+import 'package:vikunja_app/presentation/widgets/client_certificate_section.dart';
 import 'package:vikunja_app/presentation/widgets/sentry_dialog.dart';
 import 'package:vikunja_app/presentation/widgets/version_mismatch_dialog.dart';
 
@@ -283,6 +285,8 @@ class LoginPageState extends ConsumerState<LoginPage> {
                   : null,
               child: Text(AppLocalizations.of(context).cancel),
             ),
+          const SizedBox(height: 24),
+          const ClientCertificateSection(compact: true),
         ],
       ),
     );
@@ -465,8 +469,16 @@ class LoginPageState extends ConsumerState<LoginPage> {
           .getInfo();
 
       if (!info.isSuccessful) {
+        final statusCode = info.isError ? info.toError().statusCode : null;
+        final certHint =
+            (statusCode == 401 || statusCode == 403) &&
+            !TlsHttpOverrides.clientCertificateActive;
         setState(() {
-          _serverError = AppLocalizations.of(context).cannotReachServer;
+          _serverError = certHint
+              ? AppLocalizations.of(
+                  context,
+                ).clientCertificateMayBeRequired(statusCode!)
+              : AppLocalizations.of(context).cannotReachServer;
         });
         _formKey.currentState?.validate();
         return;

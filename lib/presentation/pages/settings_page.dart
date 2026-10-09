@@ -18,6 +18,7 @@ import 'package:vikunja_app/presentation/manager/settings_controller.dart';
 import 'package:vikunja_app/presentation/pages/error_widget.dart';
 import 'package:vikunja_app/presentation/pages/loading_widget.dart';
 import 'package:vikunja_app/presentation/pages/login/login_page.dart';
+import 'package:vikunja_app/presentation/widgets/client_certificate_section.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -130,6 +131,7 @@ class SettingsPageState extends ConsumerState<SettingsPage> {
                       .setIgnoreCertificates(value ?? false);
                 },
               ),
+              const ClientCertificateSection(),
               Divider(),
               CheckboxListTile(
                 title: Text(l10n.enableSentry),
