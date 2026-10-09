@@ -4,8 +4,11 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart' as io_client;
 import 'package:http/testing.dart' as http_testing;
 import 'package:vikunja_app/core/network/client.dart';
+import 'package:vikunja_app/core/network/client_certificate.dart';
+import 'package:vikunja_app/core/network/tls_http_overrides.dart';
 import 'package:vikunja_app/core/network/token_lock.dart';
 import 'package:vikunja_app/data/data_sources/settings_data_source.dart';
 
@@ -494,6 +497,85 @@ void main() {
       );
 
       expect(response.statusCode, 200);
+    });
+  });
+
+  group('Client TLS configuration', () {
+    tearDown(() => HttpOverrides.global = null);
+
+    test('constructor reads ignoreCertificates from current overrides', () {
+      applyTlsSettings(ignoreCertificates: true, certificate: null);
+
+      final client = Client(base: _baseUrl);
+
+      expect(client.ignoreCertificates, isTrue);
+    });
+
+    test('setIgnoreCerts keeps the security context', () {
+      applyTlsSettings(
+        ignoreCertificates: false,
+        certificate: ClientCertificate(
+          pkcs12: File('test/fixtures/client.p12').readAsBytesSync(),
+          password: 'test1234',
+        ),
+      );
+      final contextBefore = TlsHttpOverrides.current!.securityContext;
+      final client = Client(base: _baseUrl);
+
+      client.setIgnoreCerts(true);
+
+      expect(TlsHttpOverrides.current!.ignoreCertificates, isTrue);
+      expect(TlsHttpOverrides.current!.securityContext, same(contextBefore));
+      expect(
+        TlsHttpOverrides.current!.certificateStatus,
+        ClientCertificateStatus.active,
+      );
+    });
+
+    test('setIgnoreCerts installs TlsHttpOverrides when none exist', () {
+      final client = Client(base: _baseUrl);
+
+      client.setIgnoreCerts(true);
+
+      expect(TlsHttpOverrides.current, isNotNull);
+      expect(TlsHttpOverrides.current!.ignoreCertificates, isTrue);
+      expect(TlsHttpOverrides.current!.securityContext, isNull);
+    });
+
+    test('createClient returns an IOClient when a certificate is active', () {
+      applyTlsSettings(
+        ignoreCertificates: false,
+        certificate: ClientCertificate(
+          pkcs12: File('test/fixtures/client.p12').readAsBytesSync(),
+          password: 'test1234',
+        ),
+      );
+
+      final client = Client(base: _baseUrl);
+
+      expect(client.createClient(), isA<io_client.IOClient>());
+    });
+  });
+
+  group('Client.getRaw', () {
+    test('sends the auth header and returns the raw response', () async {
+      final settings = MockSettingsDatasource()..token = 'tok';
+      final client = _createClient(
+        settings,
+        http_testing.MockClient((request) async {
+          expect(
+            request.url.toString(),
+            '$_baseUrl/api/v1/tasks/1/attachments/2',
+          );
+          expect(request.headers['Authorization'], 'Bearer tok');
+          return http.Response.bytes([1, 2, 3], 200);
+        }),
+      );
+
+      final response = await client.getRaw(url: '/tasks/1/attachments/2');
+
+      expect(response.statusCode, 200);
+      expect(response.bodyBytes, [1, 2, 3]);
     });
   });
 }

@@ -11,6 +11,7 @@ import 'package:http/io_client.dart' as io_client;
 import 'package:logging/logging.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:vikunja_app/core/network/response.dart';
+import 'package:vikunja_app/core/network/tls_http_overrides.dart';
 import 'package:vikunja_app/core/network/token_lock.dart';
 import 'package:vikunja_app/core/utils/constants.dart';
 import 'package:vikunja_app/data/data_sources/settings_data_source.dart';
@@ -29,7 +30,8 @@ class Client {
   final JsonEncoder _encoder = JsonEncoder();
 
   String _base = '';
-  bool ignoreCertificates = false;
+  bool ignoreCertificates =
+      TlsHttpOverrides.current?.ignoreCertificates ?? false;
 
   SettingsDatasource settingsDatasource = SettingsDatasource(
     FlutterSecureStorage(),
@@ -53,6 +55,12 @@ class Client {
   }
 
   http.Client createClient() {
+    // A user-imported client certificate lives in HttpOverrides.global.
+    // Cronet cannot present client certificates, so route through dart:io.
+    if (TlsHttpOverrides.clientCertificateActive) {
+      return io_client.IOClient();
+    }
+
     try {
       if (Platform.isAndroid) {
         final engine = cronet_http.CronetEngine.build(
@@ -80,7 +88,13 @@ class Client {
 
   void setIgnoreCerts(bool val) {
     ignoreCertificates = val;
-    HttpOverrides.global = IgnoreCertHttpOverrides(ignoreCertificates);
+    final current = TlsHttpOverrides.current;
+    HttpOverrides.global = TlsHttpOverrides(
+      ignoreCertificates: val,
+      securityContext: current?.securityContext,
+      certificateStatus:
+          current?.certificateStatus ?? ClientCertificateStatus.none,
+    );
   }
 
   Future<Map<String, String>> getHeaders() async {
@@ -189,6 +203,16 @@ class Client {
           body: _encoder.convert(body),
         )
         .timeout(_requestTimeout);
+  }
+
+  static const Duration _downloadTimeout = Duration(seconds: 60);
+
+  /// Authenticated GET that returns the raw response. Used for attachment
+  /// downloads when the certificate-presenting IOClient must be used.
+  Future<http.Response> getRaw({required String url}) async {
+    return _httpClient
+        .get('$apiBase$url'.toUri()!, headers: await getHeaders())
+        .timeout(_downloadTimeout);
   }
 
   io_client.IOClient _createIOClient() {
@@ -315,19 +339,5 @@ class Client {
       Sentry.captureException(e, stackTrace: s);
     }
     return ExceptionResponse<T>(e, s);
-  }
-}
-
-class IgnoreCertHttpOverrides extends HttpOverrides {
-  bool ignoreCerts = false;
-
-  IgnoreCertHttpOverrides(bool ignore) {
-    ignoreCerts = ignore;
-  }
-
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback = (_, _, _) => ignoreCerts;
   }
 }
