@@ -223,5 +223,24 @@
   "versionDialogUsed": "Your server version: {versionString}",
   "@versionDialogUsed": {
     "placeholders": { "versionString": { "type": "String" } }
+  },
+  "clientCertificate": "Client certificate",
+  "clientCertificateNone": "No client certificate imported. Import a PKCS#12 (.p12/.pfx) file if your server requires one.",
+  "clientCertificateActive": "A client certificate is active. Requests are sent through the certificate-aware client.",
+  "clientCertificateInvalid": "The stored certificate failed to load. Import it again.",
+  "clientCertificateImport": "Import certificate",
+  "clientCertificateRemove": "Remove certificate",
+  "clientCertificatePasswordTitle": "Certificate password",
+  "clientCertificatePasswordHint": "Password of the PKCS#12 file",
+  "clientCertificateCaOptional": "Optional: also trust a private CA certificate (PEM).",
+  "clientCertificatePickCa": "Choose CA file",
+  "clientCertificateImportFailed": "Could not read the certificate. Check the file and password.",
+  "clientCertificateImported": "Client certificate imported",
+  "clientCertificateRemoved": "Client certificate removed",
+  "clientCertificateMayBeRequired": "The server rejected the connection before login (HTTP {status}). It may require a client certificate. Import one below and try again.",
+  "@clientCertificateMayBeRequired": {
+    "placeholders": {
+      "status": {"type": "int"}
+    }
   }
 }
