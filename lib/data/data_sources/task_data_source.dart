@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:vikunja_app/core/network/remote_data_source.dart';
 import 'package:vikunja_app/core/network/response.dart';
+import 'package:vikunja_app/core/network/tls_http_overrides.dart';
+import 'package:vikunja_app/data/data_sources/attachment_downloader.dart';
 import 'package:vikunja_app/data/models/task_attachment_dto.dart';
 import 'package:vikunja_app/data/models/task_dto.dart';
 
@@ -91,16 +93,21 @@ class TaskDataSource extends RemoteDataSource {
     int taskId,
     TaskAttachmentDto attachment,
   ) async {
-    String url = client.apiBase;
-    url += '/tasks/$taskId/attachments/${attachment.id}';
+    final relativeUrl = '/tasks/$taskId/attachments/${attachment.id}';
 
     final task = DownloadTask(
-      url: url,
+      url: '${client.apiBase}$relativeUrl',
       baseDirectory: BaseDirectory.applicationSupport,
       filename: attachment.file.name,
       headers: await client.getHeaders(),
       updates: Updates.statusAndProgress,
     );
+
+    // background_downloader's native stack cannot present a client
+    // certificate, so download in-process while one is active.
+    if (TlsHttpOverrides.clientCertificateActive) {
+      return ForegroundAttachmentDownloader(client).download(task, relativeUrl);
+    }
 
     return await FileDownloader().download(task);
   }
