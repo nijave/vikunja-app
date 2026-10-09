@@ -21,6 +21,18 @@ import 'package:vikunja_app/presentation/widgets/client_certificate_section.dart
 import 'package:vikunja_app/presentation/widgets/sentry_dialog.dart';
 import 'package:vikunja_app/presentation/widgets/version_mismatch_dialog.dart';
 
+/// Returns the status code to show in the "may require a client certificate"
+/// hint, or null when the hint does not apply to [info].
+@visibleForTesting
+int? clientCertificateHintStatus(
+  Response<Object?> info, {
+  required bool certificateActive,
+}) {
+  if (certificateActive || !info.isError) return null;
+  final statusCode = info.toError().statusCode;
+  return statusCode == 401 || statusCode == 403 ? statusCode : null;
+}
+
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
@@ -469,15 +481,15 @@ class LoginPageState extends ConsumerState<LoginPage> {
           .getInfo();
 
       if (!info.isSuccessful) {
-        final statusCode = info.isError ? info.toError().statusCode : null;
-        final certHint =
-            (statusCode == 401 || statusCode == 403) &&
-            !TlsHttpOverrides.clientCertificateActive;
+        final hintStatus = clientCertificateHintStatus(
+          info,
+          certificateActive: TlsHttpOverrides.clientCertificateActive,
+        );
         setState(() {
-          _serverError = certHint
+          _serverError = hintStatus != null
               ? AppLocalizations.of(
                   context,
-                ).clientCertificateMayBeRequired(statusCode!)
+                ).clientCertificateMayBeRequired(hintStatus)
               : AppLocalizations.of(context).cannotReachServer;
         });
         _formKey.currentState?.validate();

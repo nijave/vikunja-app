@@ -127,7 +127,7 @@ class Client {
         fragment: uri.fragment,
       );
 
-      return _handleResponseWithRefresh(mapper, () async {
+      return await _handleResponseWithRefresh(mapper, () async {
         return _httpClient.get(uri, headers: await getHeaders());
       });
     } catch (e, s) {
@@ -140,7 +140,7 @@ class Client {
     T Function(dynamic body)? mapper,
   }) async {
     try {
-      return _handleResponseWithRefresh(mapper, () async {
+      return await _handleResponseWithRefresh(mapper, () async {
         return _httpClient.delete(
           '$apiBase$url'.toUri()!,
           headers: await getHeaders(),
@@ -158,7 +158,7 @@ class Client {
   }) async {
     try {
       var encodedBody = _encoder.convert(body);
-      return _handleResponseWithRefresh(mapper, () async {
+      return await _handleResponseWithRefresh(mapper, () async {
         return _httpClient.post(
           '$apiBase$url'.toUri()!,
           headers: await getHeaders(),
@@ -177,7 +177,7 @@ class Client {
   }) async {
     try {
       var encodedBody = _encoder.convert(body);
-      return _handleResponseWithRefresh(mapper, () async {
+      return await _handleResponseWithRefresh(mapper, () async {
         return _httpClient.put(
           '$apiBase$url'.toUri()!,
           headers: await getHeaders(),
@@ -228,18 +228,21 @@ class Client {
     T Function(dynamic body)? mapper,
   ) async {
     if (response.statusCode < 200 || response.statusCode >= 400) {
-      try {
-        Map<String, dynamic> error = _decoder.convert(response.body);
-
-        if (response.statusCode == 401 &&
-            globalNavigatorKey.currentContext != null) {
-          globalNavigatorKey.currentState?.pushNamed("/login");
-        }
-
-        return ErrorResponse<T>(response.statusCode, await getHeaders(), error);
-      } on FormatException catch (e, s) {
-        return ExceptionResponse(e, s);
+      final error = _decodeErrorBody(response.body);
+      if (error == null) {
+        // A proxy (for example an mTLS gate) can answer with a plain-text or
+        // empty body. Keep the status code so callers can still react to it.
+        return ErrorResponse<T>(response.statusCode, await getHeaders(), {
+          'message': response.body,
+        });
       }
+
+      if (response.statusCode == 401 &&
+          globalNavigatorKey.currentContext != null) {
+        globalNavigatorKey.currentState?.pushNamed("/login");
+      }
+
+      return ErrorResponse<T>(response.statusCode, await getHeaders(), error);
     }
 
     var decode = utf8.decode(response.bodyBytes);
@@ -321,8 +324,8 @@ class Client {
     var response = await executeRequest().timeout(_requestTimeout);
 
     if (response.statusCode == 401) {
-      Map<String, dynamic> error = _decoder.convert(response.body);
-      if (error.containsKey('code') && error['code'] == 11) {
+      final error = _decodeErrorBody(response.body);
+      if (error != null && error['code'] == 11) {
         bool refreshed = await tryRefreshToken();
         if (refreshed) {
           var retryResponse = await executeRequest().timeout(_requestTimeout);
@@ -332,6 +335,17 @@ class Client {
     }
 
     return _handleResponse(response, mapper);
+  }
+
+  /// Decodes a JSON object error body. Returns null when the body is not a
+  /// JSON object, for example a plain-text deny from a proxy.
+  Map<String, dynamic>? _decodeErrorBody(String body) {
+    try {
+      final decoded = _decoder.convert(body);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } on FormatException {
+      return null;
+    }
   }
 
   ExceptionResponse<T> _handleException<T>(Object e, StackTrace s) {

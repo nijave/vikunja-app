@@ -342,6 +342,52 @@ void main() {
       expect(requestCount, 1);
     });
 
+    test('keeps the status code of a 403 with a plain-text body', () async {
+      final client = _createClient(
+        settings,
+        http_testing.MockClient((_) async {
+          requestCount++;
+          return http.Response('denied', 403);
+        }),
+      );
+
+      final response = await client.get<void>(url: '/info');
+
+      expect(response.isError, isTrue);
+      expect(response.toError().statusCode, 403);
+      expect(response.toError().error['message'], 'denied');
+      expect(requestCount, 1);
+    });
+
+    test('keeps the status code of a 401 with a plain-text body', () async {
+      settings.refreshToken = 'valid-refresh';
+      final client = _createClient(
+        settings,
+        http_testing.MockClient((_) async {
+          requestCount++;
+          return http.Response('Unauthorized', 401);
+        }),
+      );
+
+      final response = await client.get<void>(url: '/info');
+
+      expect(response.isError, isTrue);
+      expect(response.toError().statusCode, 401);
+      expect(requestCount, 1);
+    });
+
+    test('keeps the status code of an error with an empty body', () async {
+      final client = _createClient(
+        settings,
+        http_testing.MockClient((_) async => http.Response('', 403)),
+      );
+
+      final response = await client.get<void>(url: '/info');
+
+      expect(response.isError, isTrue);
+      expect(response.toError().statusCode, 403);
+    });
+
     test('returns error when refresh fails', () async {
       settings.refreshToken = null;
 
