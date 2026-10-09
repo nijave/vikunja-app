@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:vikunja_app/core/network/client_certificate.dart';
 import 'package:vikunja_app/core/theming/theme_mode.dart';
 
 class SettingsDatasource {
@@ -160,6 +162,52 @@ class SettingsDatasource {
     await saveUserToken(null);
     await saveRefreshToken(null);
     await saveServer(null);
+  }
+
+  static const _clientCertPkcs12Key = "client-cert-pkcs12";
+  static const _clientCertPasswordKey = "client-cert-password";
+  static const _clientCertCaPemKey = "client-cert-ca-pem";
+
+  Future<ClientCertificate?> getClientCertificate() async {
+    final pkcs12 = await _storage.read(key: _clientCertPkcs12Key);
+    final password = await _storage.read(key: _clientCertPasswordKey);
+    if (pkcs12 == null || pkcs12.isEmpty || password == null) {
+      return null;
+    }
+    final caPem = await _storage.read(key: _clientCertCaPemKey);
+    return ClientCertificate(
+      pkcs12: base64Decode(pkcs12),
+      password: password,
+      caPem: caPem == null || caPem.isEmpty
+          ? null
+          : Uint8List.fromList(base64Decode(caPem)),
+    );
+  }
+
+  Future<void> saveClientCertificate(ClientCertificate certificate) async {
+    await _storage.write(
+      key: _clientCertPkcs12Key,
+      value: base64Encode(certificate.pkcs12),
+    );
+    await _storage.write(
+      key: _clientCertPasswordKey,
+      value: certificate.password,
+    );
+    final caPem = certificate.caPem;
+    if (caPem != null && caPem.isNotEmpty) {
+      await _storage.write(
+        key: _clientCertCaPemKey,
+        value: base64Encode(caPem),
+      );
+    } else {
+      await _storage.delete(key: _clientCertCaPemKey);
+    }
+  }
+
+  Future<void> clearClientCertificate() async {
+    await _storage.delete(key: _clientCertPkcs12Key);
+    await _storage.delete(key: _clientCertPasswordKey);
+    await _storage.delete(key: _clientCertCaPemKey);
   }
 
   Future<String?> getLocaleOverride() async {

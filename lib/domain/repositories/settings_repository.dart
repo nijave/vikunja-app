@@ -1,3 +1,4 @@
+import 'package:vikunja_app/core/network/client_certificate.dart';
 import 'package:vikunja_app/core/theming/theme_mode.dart';
 
 abstract class SettingsRepository {
@@ -52,6 +53,12 @@ abstract class SettingsRepository {
   Future<void> saveServer(String? server);
 
   Future<String?> getServer();
+
+  Future<ClientCertificate?> getClientCertificate();
+
+  Future<void> saveClientCertificate(ClientCertificate certificate);
+
+  Future<void> clearClientCertificate();
 
   // Locale override (null -> system default)
   Future<String?> getLocaleOverride();

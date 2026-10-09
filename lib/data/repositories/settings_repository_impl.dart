@@ -1,3 +1,4 @@
+import 'package:vikunja_app/core/network/client_certificate.dart';
 import 'package:vikunja_app/core/theming/theme_mode.dart';
 import 'package:vikunja_app/data/data_sources/settings_data_source.dart';
 import 'package:vikunja_app/domain/repositories/settings_repository.dart';
@@ -135,6 +136,21 @@ class SettingsRepositoryImpl implements SettingsRepository {
   @override
   Future<void> saveRefreshToken(String? token) {
     return _datasource.saveRefreshToken(token);
+  }
+
+  @override
+  Future<ClientCertificate?> getClientCertificate() {
+    return _datasource.getClientCertificate();
+  }
+
+  @override
+  Future<void> saveClientCertificate(ClientCertificate certificate) {
+    return _datasource.saveClientCertificate(certificate);
+  }
+
+  @override
+  Future<void> clearClientCertificate() {
+    return _datasource.clearClientCertificate();
   }
 
   @override
