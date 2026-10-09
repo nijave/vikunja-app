@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:vikunja_app/core/network/client.dart';
+import 'package:vikunja_app/core/network/tls_http_overrides.dart';
 import 'package:vikunja_app/data/data_sources/project_data_source.dart';
 import 'package:vikunja_app/data/data_sources/settings_data_source.dart';
 import 'package:vikunja_app/data/data_sources/task_data_source.dart';
@@ -20,11 +21,9 @@ Future<Client?> _initWidgetClient(SettingsDatasource datasource) async {
   var refreshToken = await datasource.getRefreshToken();
   if (refreshToken == null || base == null) return null;
 
+  await applyStoredTlsSettings(datasource);
   Client client = Client(base: base);
   tz.initializeTimeZones();
-
-  var ignoreCertificates = await datasource.getIgnoreCertificates();
-  client.setIgnoreCerts(ignoreCertificates);
   return client;
 }
 

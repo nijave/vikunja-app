@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:vikunja_app/core/network/client.dart';
+import 'package:vikunja_app/core/network/tls_http_overrides.dart';
 import 'package:vikunja_app/data/data_sources/settings_data_source.dart';
 import 'package:vikunja_app/data/data_sources/task_data_source.dart';
 import 'package:vikunja_app/data/repositories/task_repository_impl.dart';
@@ -60,11 +61,9 @@ Future<bool> updateTasks() async {
     return Future.value(true);
   }
 
+  await applyStoredTlsSettings(datasource);
   Client client = Client(base: base);
   tz.initializeTimeZones();
-
-  var ignoreCertificates = await datasource.getIgnoreCertificates();
-  client.setIgnoreCerts(ignoreCertificates);
 
   TaskRepository taskService = TaskRepositoryImpl(TaskDataSource(client));
 

@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:vikunja_app/core/di/data_source_provider.dart';
 import 'package:vikunja_app/core/di/network_provider.dart';
 import 'package:vikunja_app/core/di/repository_provider.dart';
 import 'package:vikunja_app/core/network/response.dart';
+import 'package:vikunja_app/core/network/tls_http_overrides.dart';
 import 'package:vikunja_app/domain/entities/auth_model.dart';
 import 'package:vikunja_app/domain/entities/server.dart';
 import 'package:vikunja_app/domain/entities/version.dart';
@@ -32,6 +34,9 @@ final initControllerProvider = FutureProvider<InitOutcome>((ref) {
 
 Future<InitOutcome> _runInit(Ref ref) async {
   final settingsRepo = ref.read(settingsRepositoryProvider);
+
+  // Install ignore-certs and client certificate before the Client is built.
+  await applyStoredTlsSettings(ref.read(settingsDataSourceProvider));
 
   final server = await settingsRepo.getServer();
   if (server == null) {
