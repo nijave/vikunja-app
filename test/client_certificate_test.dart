@@ -63,6 +63,44 @@ void main() {
         throwsA(isA<ClientCertificateException>()),
       );
     });
+
+    test('accepts a PKCS#12 with a trailing newline', () {
+      final context = buildSecurityContext(
+        ClientCertificate(
+          pkcs12: Uint8List.fromList([..._fixture('client.p12'), 0x0a]),
+          password: _password,
+        ),
+      );
+      expect(context, isA<SecurityContext>());
+    });
+
+    test('accepts a PKCS#12 with several trailing bytes', () {
+      final context = buildSecurityContext(
+        ClientCertificate(
+          pkcs12: Uint8List.fromList([
+            ..._fixture('client.p12'),
+            0x0d,
+            0x0a,
+            0x00,
+          ]),
+          password: _password,
+        ),
+      );
+      expect(context, isA<SecurityContext>());
+    });
+
+    test('still rejects a truncated PKCS#12', () {
+      final bytes = _fixture('client.p12');
+      expect(
+        () => buildSecurityContext(
+          ClientCertificate(
+            pkcs12: Uint8List.sublistView(bytes, 0, bytes.length - 16),
+            password: _password,
+          ),
+        ),
+        throwsA(isA<ClientCertificateException>()),
+      );
+    });
   });
 
   group('mTLS round trip against a local HttpServer', () {
