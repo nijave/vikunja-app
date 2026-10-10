@@ -531,7 +531,10 @@ class LoginPageState extends ConsumerState<LoginPage> {
 
       // Step 3: Launch OAuth PKCE flow
       setState(() => _showCancel = true);
-      String code = await _oauthService.authorize(server);
+      String code = await _oauthService.authorize(
+        server,
+        client: ref.read(clientProviderProvider),
+      );
 
       // Step 4: Exchange code for tokens
       var client = ref.read(clientProviderProvider);

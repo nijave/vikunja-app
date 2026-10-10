@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
+import 'dart:io';
 
 import 'package:app_links/app_links.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:vikunja_app/core/network/client.dart';
+import 'package:vikunja_app/core/network/tls_http_overrides.dart';
 import 'package:vikunja_app/core/oauth/pkce.dart';
 
 class OAuthTokenResponse {
@@ -41,9 +45,26 @@ class OAuthException implements Exception {
   OAuthException(this.error, {this.serverMessage});
 }
 
+/// Opens [url] outside the app. Returns false when no handler launched it.
+typedef UrlLauncher = Future<bool> Function(Uri url);
+
+/// Runs the authorize leg in an in-app web view. Returns the
+/// `vikunja-flutter://callback` URI, or null when the user cancelled.
+typedef WebViewAuthorizer = Future<Uri?> Function(Uri authorizeUrl);
+
 class OAuthService {
   static const String _clientId = 'vikunja-flutter';
   static const String _redirectUri = 'vikunja-flutter://callback';
+  static const Set<int> _redirectStatuses = {301, 302, 303, 307, 308};
+
+  final UrlLauncher _launcher;
+  final WebViewAuthorizer? _webViewAuthorizer;
+
+  OAuthService({UrlLauncher? launcher, WebViewAuthorizer? webViewAuthorizer})
+    : _launcher =
+          launcher ??
+          ((url) => launchUrl(url, mode: LaunchMode.externalApplication)),
+      _webViewAuthorizer = webViewAuthorizer;
 
   String _codeVerifier = '';
   String _state = '';
@@ -63,10 +84,13 @@ class OAuthService {
     _callbackCompleter = null;
   }
 
-  /// Launches the OAuth authorization flow in the system browser.
-  /// Returns a Future that completes with the authorization code
-  /// when the app receives the callback deep link.
-  Future<String> authorize(String serverUrl) async {
+  /// Runs the OAuth authorization flow and returns the authorization code.
+  ///
+  /// With an active client certificate and a [client], the app first sends
+  /// the authorize request itself and reads a redirect to the app scheme.
+  /// When that does not produce a callback, it uses the in-app web view if
+  /// one is available, else the system browser and the callback deep link.
+  Future<String> authorize(String serverUrl, {Client? client}) async {
     cancelAuthorize();
 
     _codeVerifier = generateRandomString(128);
@@ -84,10 +108,76 @@ class OAuthService {
       },
     );
 
-    final launched = await launchUrl(
-      authorizeUrl,
-      mode: LaunchMode.externalApplication,
-    );
+    final certificateActive = TlsHttpOverrides.clientCertificateActive;
+
+    if (client != null && certificateActive) {
+      final callbackUri = await _authorizeInApp(client, authorizeUrl);
+      if (callbackUri != null) {
+        return _codeFromCallback(callbackUri);
+      }
+    }
+
+    final webViewAuthorizer = _webViewAuthorizer;
+    if (certificateActive && webViewAuthorizer != null) {
+      final callbackUri = await webViewAuthorizer(authorizeUrl);
+      if (callbackUri == null) {
+        throw OAuthException(OAuthError.cancelled);
+      }
+      return _codeFromCallback(callbackUri);
+    }
+
+    return _authorizeInBrowser(authorizeUrl);
+  }
+
+  /// Sends the authorize request through [client] without following
+  /// redirects. Returns the callback URI when the server redirects to the app
+  /// scheme, or null when the caller should fall back to another path.
+  Future<Uri?> _authorizeInApp(Client client, Uri authorizeUrl) async {
+    final http.StreamedResponse response;
+    try {
+      response = await client.getUnauthenticatedNoRedirect(authorizeUrl);
+    } on Exception catch (e) {
+      if (e is http.ClientException ||
+          e is TimeoutException ||
+          e is SocketException ||
+          e is HandshakeException) {
+        developer.log('In-app authorize request failed: $e');
+        return null;
+      }
+      rethrow;
+    }
+
+    try {
+      if (!_redirectStatuses.contains(response.statusCode)) {
+        developer.log(
+          'In-app authorize got HTTP ${response.statusCode}, not a redirect',
+        );
+        return null;
+      }
+      final location = response.headers['location'];
+      final callbackUri = location == null ? null : Uri.tryParse(location);
+      if (callbackUri == null ||
+          callbackUri.scheme != 'vikunja-flutter' ||
+          callbackUri.host != 'callback') {
+        developer.log(
+          'In-app authorize redirect is not the app callback: $location',
+        );
+        return null;
+      }
+      return callbackUri;
+    } finally {
+      try {
+        await response.stream.drain<void>();
+      } catch (_) {
+        // The body is irrelevant; draining only releases the connection.
+      }
+    }
+  }
+
+  /// Opens [authorizeUrl] in the system browser and waits for the callback
+  /// deep link.
+  Future<String> _authorizeInBrowser(Uri authorizeUrl) async {
+    final launched = await _launcher(authorizeUrl);
 
     if (!launched) {
       throw OAuthException(OAuthError.browserLaunchFailed);
@@ -115,6 +205,11 @@ class OAuthService {
     _linkSubscription = null;
     _callbackCompleter = null;
 
+    return _codeFromCallback(callbackUri);
+  }
+
+  /// Checks the `state` of a callback URI and returns its `code`.
+  String _codeFromCallback(Uri callbackUri) {
     final returnedState = callbackUri.queryParameters['state'];
     if (returnedState != _state) {
       throw OAuthException(OAuthError.stateMismatch);

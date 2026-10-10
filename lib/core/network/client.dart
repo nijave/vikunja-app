@@ -205,6 +205,15 @@ class Client {
         .timeout(_requestTimeout);
   }
 
+  /// Unauthenticated GET that does not follow redirects, so callers can read
+  /// a `Location` header. Used by the OAuth authorize leg under mTLS.
+  Future<http.StreamedResponse> getUnauthenticatedNoRedirect(Uri uri) {
+    final request = http.Request('GET', uri)
+      ..followRedirects = false
+      ..headers['User-Agent'] = userAgent;
+    return _httpClient.send(request).timeout(_requestTimeout);
+  }
+
   static const Duration _downloadTimeout = Duration(seconds: 60);
 
   /// Authenticated GET that returns the raw response. Used for attachment
