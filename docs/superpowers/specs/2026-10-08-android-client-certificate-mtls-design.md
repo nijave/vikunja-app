@@ -104,16 +104,32 @@ load. Import it again." Status `none` after a known import (secure storage
 can lose entries on backup restore or keystore reset) renders as the ordinary
 not-configured state. Neither state crashes or blocks login.
 
-### OAuth login and the system browser
+### OAuth login with a client certificate
 
-The PKCE flow opens `/oauth/authorize` in the system browser through
-`url_launcher`. The browser cannot use the certificate that the user imported
-into the app. If the proxy also gates that path, the user must install the same
-`.p12` in the Android credential store so that Chrome can present it. The
-`/api/v1/info` probe and the token exchange still go through `Client` and use
-the imported certificate. A candidate follow-up ports the in-app redirect
-handling from PR #301, so the authorization step also runs over the app's
-mTLS transport.
+A system browser cannot use the certificate that the user imported into the
+app. The device test on 2026-10-10 confirmed this: Firefox for Android sent no
+certificate on the `/oauth/authorize` request, and the proxy denied it.
+`OAuthService.authorize()` picks one of three paths:
+
+1. **No certificate active.** Unchanged: `url_launcher` opens the system
+   browser and the deep link `vikunja-flutter://callback` returns the code.
+2. **Certificate active, redirecting proxy.** The app sends the `/oauth/authorize` GET
+   itself through `Client` with redirects disabled. When the response is a 30x
+   whose `Location` is `vikunja-flutter://callback`, the app treats it as the
+   callback: same `state` check, same `code` extraction. No browser opens.
+   This matches a federating proxy that mints the code from the mTLS identity.
+3. **Certificate active, any other response.** The app opens the `/oauth/authorize` URL
+   in an in-app `InAppWebView` page. The page answers the client-certificate
+   challenge from the stored bundle, written to an app-private temporary file
+   for the duration of the login and deleted when the page closes. A navigation
+   to `vikunja-flutter://callback` completes the flow; the back button cancels
+   it. With Ignore Certificates on, the page also accepts the server-trust
+   challenge; otherwise it trusts the system and user CA stores, as Chrome
+   does.
+
+`flutter_inappwebview` already ships with the app as a dependency of the HTML
+editor, so path 3 adds no plugin and no native code. The token exchange still
+goes through `Client` on every path.
 
 ## Out of scope
 
