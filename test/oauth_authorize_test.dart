@@ -221,4 +221,97 @@ void main() {
     expect(code, 'fromwebview');
     expect(launched, isEmpty);
   });
+
+  test('honors cancelAuthorize while the in-app request is pending', () async {
+    final launched = <Uri>[];
+    var webViewCalls = 0;
+    final requestStarted = Completer<void>();
+    final release = Completer<void>();
+    final mock = http_testing.MockClient((request) async {
+      requestStarted.complete();
+      await release.future;
+      final state = request.url.queryParameters['state'];
+      return http.Response(
+        '',
+        302,
+        headers: {
+          'location': 'vikunja-flutter://callback?code=late&state=$state',
+        },
+      );
+    });
+    final service = OAuthService(
+      launcher: (url) async {
+        launched.add(url);
+        return true;
+      },
+      webViewAuthorizer: (url) async {
+        webViewCalls++;
+        return null;
+      },
+    );
+
+    final result = service.authorize(_baseUrl, client: _createClient(mock));
+    await requestStarted.future;
+    service.cancelAuthorize();
+    release.complete();
+
+    await expectLater(result, _isCancelled);
+    expect(launched, isEmpty);
+    expect(webViewCalls, 0);
+  });
+
+  test(
+    'falls back to the browser when the redirect is not the callback',
+    () async {
+      final mock = http_testing.MockClient(
+        (request) async => http.Response(
+          '',
+          302,
+          headers: {'location': 'https://example.com/elsewhere'},
+        ),
+      );
+      late OAuthService service;
+      final fake = cancellingLauncher(() => service);
+      service = OAuthService(launcher: fake.launcher);
+
+      await expectLater(
+        service.authorize(_baseUrl, client: _createClient(mock)),
+        _isCancelled,
+      );
+      expect(fake.calls, hasLength(1));
+    },
+  );
+
+  test('throws cancelled when the webViewAuthorizer returns null', () async {
+    final launched = <Uri>[];
+    final mock = http_testing.MockClient(
+      (request) async => http.Response('<html>login</html>', 200),
+    );
+    final service = OAuthService(
+      launcher: (url) async {
+        launched.add(url);
+        return true;
+      },
+      webViewAuthorizer: (url) async => null,
+    );
+
+    await expectLater(
+      service.authorize(_baseUrl, client: _createClient(mock)),
+      _isCancelled,
+    );
+    expect(launched, isEmpty);
+  });
+
+  test(
+    'uses the browser when no client is given and a certificate is active',
+    () async {
+      late OAuthService service;
+      final fake = cancellingLauncher(() => service);
+      service = OAuthService(launcher: fake.launcher);
+
+      await expectLater(service.authorize(_baseUrl), _isCancelled);
+      expect(fake.calls, hasLength(1));
+      expect(fake.calls.single.path, '/oauth/authorize');
+    },
+  );
 }

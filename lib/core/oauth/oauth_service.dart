@@ -71,11 +71,16 @@ class OAuthService {
   StreamSubscription<Uri>? _linkSubscription;
   Completer<Uri>? _callbackCompleter;
 
+  /// Increments on every [authorize] and [cancelAuthorize], so a flow can
+  /// tell after an await that someone cancelled or replaced it.
+  int _generation = 0;
+
   bool get isWaitingForCallback =>
       _callbackCompleter != null && !_callbackCompleter!.isCompleted;
 
   /// Cancels a pending authorization flow.
   void cancelAuthorize() {
+    _generation++;
     _linkSubscription?.cancel();
     _linkSubscription = null;
     if (_callbackCompleter != null && !_callbackCompleter!.isCompleted) {
@@ -92,6 +97,7 @@ class OAuthService {
   /// one is available, else the system browser and the callback deep link.
   Future<String> authorize(String serverUrl, {Client? client}) async {
     cancelAuthorize();
+    final generation = ++_generation;
 
     _codeVerifier = generateRandomString(128);
     _state = generateRandomString(32);
@@ -112,6 +118,7 @@ class OAuthService {
 
     if (client != null && certificateActive) {
       final callbackUri = await _authorizeInApp(client, authorizeUrl);
+      _throwIfCancelled(generation);
       if (callbackUri != null) {
         return _codeFromCallback(callbackUri);
       }
@@ -119,7 +126,9 @@ class OAuthService {
 
     final webViewAuthorizer = _webViewAuthorizer;
     if (certificateActive && webViewAuthorizer != null) {
+      _throwIfCancelled(generation);
       final callbackUri = await webViewAuthorizer(authorizeUrl);
+      _throwIfCancelled(generation);
       if (callbackUri == null) {
         throw OAuthException(OAuthError.cancelled);
       }
@@ -127,6 +136,14 @@ class OAuthService {
     }
 
     return _authorizeInBrowser(authorizeUrl);
+  }
+
+  /// Throws [OAuthError.cancelled] when [cancelAuthorize] or a newer
+  /// [authorize] call ran since [generation] was taken.
+  void _throwIfCancelled(int generation) {
+    if (generation != _generation) {
+      throw OAuthException(OAuthError.cancelled);
+    }
   }
 
   /// Sends the authorize request through [client] without following
@@ -140,7 +157,7 @@ class OAuthService {
       if (e is http.ClientException ||
           e is TimeoutException ||
           e is SocketException ||
-          e is HandshakeException) {
+          e is TlsException) {
         developer.log('In-app authorize request failed: $e');
         return null;
       }
@@ -167,9 +184,10 @@ class OAuthService {
       return callbackUri;
     } finally {
       try {
-        await response.stream.drain<void>();
+        await response.stream.drain<void>().timeout(const Duration(seconds: 5));
       } catch (_) {
-        // The body is irrelevant; draining only releases the connection.
+        // The body is irrelevant; draining only releases the connection, and
+        // the timeout stops a slow body from stalling the login.
       }
     }
   }

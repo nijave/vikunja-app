@@ -46,7 +46,8 @@ class _OAuthWebViewPageState extends State<OAuthWebViewPage> {
   bool _popped = false;
 
   Future<String> _writeCertificate() async {
-    final dir = await getApplicationSupportDirectory();
+    // The cache directory is excluded from Android Auto Backup.
+    final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/$_certificateFileName');
     await file.writeAsBytes(widget.certificate.pkcs12, flush: true);
     return file.path;
