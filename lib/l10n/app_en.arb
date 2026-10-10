@@ -234,7 +234,7 @@
   "clientCertificatePasswordHint": "Password of the PKCS#12 file",
   "clientCertificateCaOptional": "Optional: also trust a private CA certificate (PEM).",
   "clientCertificatePickCa": "Choose CA file",
-  "clientCertificateImportFailed": "Could not read the certificate. Check the file and password.",
+  "clientCertificateImportFailed": "Could not read the certificate. If the password is right, re-export the file with OpenSSL (openssl pkcs12 -export) and try again.",
   "clientCertificateImported": "Client certificate imported",
   "clientCertificateRemoved": "Client certificate removed",
   "clientCertificateMayBeRequired": "The server rejected the connection before login (HTTP {status}). It may require a client certificate. Import one below and try again.",

@@ -42,7 +42,12 @@ SecurityContext buildSecurityContext(ClientCertificate certificate) {
       context.setTrustedCertificatesBytes(caPem);
     }
   } on TlsException catch (e) {
-    throw ClientCertificateException(e.message);
+    final osMessage = e.osError?.message;
+    throw ClientCertificateException(
+      osMessage == null || osMessage.isEmpty
+          ? e.message
+          : '${e.message}: $osMessage',
+    );
   } on ArgumentError catch (e) {
     throw ClientCertificateException(e.message.toString());
   }

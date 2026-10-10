@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -97,9 +98,12 @@ class ClientCertificateSection extends ConsumerWidget {
       messenger.showSnackBar(
         SnackBar(content: Text(l10n.clientCertificateImported)),
       );
-    } on ClientCertificateException {
+    } on ClientCertificateException catch (e) {
+      developer.log('Client certificate import failed: ${e.message}');
       messenger.showSnackBar(
-        SnackBar(content: Text(l10n.clientCertificateImportFailed)),
+        SnackBar(
+          content: Text('${l10n.clientCertificateImportFailed}\n${e.message}'),
+        ),
       );
     }
   }
