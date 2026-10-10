@@ -214,6 +214,7 @@
   "oauthStateMismatch": "Authentication failed: security validation error",
   "oauthNoAuthorizationCode": "Authentication was not completed",
   "oauthTokenExchangeFailed": "Authentication failed: could not obtain access token",
+  "oauthWebViewTitle": "Sign in",
   "versionDialogTitle": "Version mismatch",
   "versionDialogDescription": "The server version is not compatible with this version of the app.\nUse at your own risk!",
   "versionDialogSupported": "Minimum required server version: {versionString}",

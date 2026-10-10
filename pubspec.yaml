@@ -20,6 +20,7 @@ dependencies:
   dynamic_color: ^1.7.0
   file_picker: ^10.3.10
   flutter_colorpicker: ^1.1.0
+  flutter_inappwebview: ^6.1.5
   flutter_lints: ^6.0.0
   flutter_local_notifications: ^20.0.0
   flutter_riverpod: ^2.6.1

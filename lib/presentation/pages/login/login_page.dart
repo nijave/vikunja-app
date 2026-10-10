@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:vikunja_app/core/di/data_source_provider.dart';
 import 'package:vikunja_app/core/di/network_provider.dart';
 import 'package:vikunja_app/core/di/repository_provider.dart';
 import 'package:vikunja_app/core/network/response.dart';
@@ -17,6 +18,7 @@ import 'package:vikunja_app/domain/entities/auth_model.dart';
 import 'package:vikunja_app/domain/entities/server.dart';
 import 'package:vikunja_app/domain/entities/version.dart';
 import 'package:vikunja_app/l10n/gen/app_localizations.dart';
+import 'package:vikunja_app/presentation/pages/login/oauth_webview_page.dart';
 import 'package:vikunja_app/presentation/widgets/client_certificate_section.dart';
 import 'package:vikunja_app/presentation/widgets/sentry_dialog.dart';
 import 'package:vikunja_app/presentation/widgets/version_mismatch_dialog.dart';
@@ -46,7 +48,9 @@ class LoginPageState extends ConsumerState<LoginPage> {
   List<String> pastServers = [];
 
   final _serverController = TextEditingController();
-  final _oauthService = OAuthService();
+  late final _oauthService = OAuthService(
+    webViewAuthorizer: _authorizeInWebView,
+  );
   String? _serverError;
   bool _showCustomUrl = false;
   bool _showCancel = false;
@@ -82,6 +86,26 @@ class LoginPageState extends ConsumerState<LoginPage> {
     _oauthService.cancelAuthorize();
     _serverController.dispose();
     super.dispose();
+  }
+
+  /// Opens the authorize URL in an in-app web view that presents the stored
+  /// client certificate. Returns the callback URI, or null when cancelled.
+  Future<Uri?> _authorizeInWebView(Uri authorizeUrl) async {
+    final certificate = await ref
+        .read(settingsDataSourceProvider)
+        .getClientCertificate();
+    if (certificate == null || !mounted) return null;
+    final ignoreCertificates =
+        TlsHttpOverrides.current?.ignoreCertificates ?? false;
+    return Navigator.of(context).push<Uri?>(
+      MaterialPageRoute(
+        builder: (_) => OAuthWebViewPage(
+          authorizeUrl: authorizeUrl,
+          certificate: certificate,
+          ignoreCertificates: ignoreCertificates,
+        ),
+      ),
+    );
   }
 
   Future<void> _showSentryDialog() {
@@ -573,7 +597,8 @@ class LoginPageState extends ConsumerState<LoginPage> {
         }
       }
     } on OAuthException catch (e) {
-      if (_cancelled) return;
+      // Closing the in-app sign-in page also cancels; show nothing.
+      if (_cancelled || e.error == OAuthError.cancelled) return;
       log("OAuth error: ${e.error}");
       if (context.mounted) {
         final l10n = AppLocalizations.of(context);
